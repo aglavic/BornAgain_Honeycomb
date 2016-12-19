@@ -98,7 +98,7 @@ class HCSample(ba.IMultiLayerBuilder):
     m_substrate=ba.HomogeneousMaterial("Silicon", SLD_Si*sf, 0.)
     # average density of the Py layer
     m_layer=ba.HomogeneousMagneticMaterial("PermalloyLayer", self.surface_fraction*SLD_Py*sf, 0.,
-                                           B_ext*self.bias_field*sf)
+                                           self.surface_fraction*B_ext*self.bias_field*sf)
     m_top=ba.HomogeneousMaterial("SurfaceLayer", self.surface_fraction*SLD_Top*sf, 0.)
 
     # initialize model and ambience layer
@@ -140,14 +140,18 @@ class HCSample(ba.IMultiLayerBuilder):
     # particle SLD to produce a contrast between average density and particle of Py-SLD
     # external field direction
     B_ext=ba.kvector_t(0., 1., 0.)
-    m_particle=ba.HomogeneousMagneticMaterial("PermalloyHole",
-                                              (self.surface_fraction-1.)*SLD_Py*sf, 0.,
-                                              2.*B_ext*self.bias_field*sf)
-    cylinder_ff=ba.FormFactorCylinder(self.hc_inner_radius, self.py_d)
-    cylinder=ba.Particle(m_particle, cylinder_ff)
-
+    m_hole=ba.HomogeneousMagneticMaterial("PermalloyHole",
+                                              -1.*SLD_Py*sf, 0.,-B_ext*self.bias_field*sf)
+    m_full=ba.HomogeneousMagneticMaterial("PermalloyFull",
+                                              (1.-self.surface_fraction)*SLD_Py*sf, 0.,
+                                              B_ext*self.bias_field*sf)
     ll=self.hc_lattice_length
     mll=self.mag_lattice_length
+
+    cylinder_ff=ba.FormFactorCylinder(self.hc_inner_radius, self.py_d)
+    cylinder=ba.Particle(m_hole, cylinder_ff)
+    hexagon_ff=ba.FormFactorPrism6(mll/2., self.py_d)
+    hexagon=ba.Particle(m_full, hexagon_ff)
 
     o=ba.kvector_t(0.0, 0.0,-self.py_d) # origin is the bottom of the py layer
     basis=ba.ParticleComposition()
@@ -156,7 +160,8 @@ class HCSample(ba.IMultiLayerBuilder):
     if self.magneti_model=='ferro':
       # for pure ferromagnetism the unit cell can be reduced to one particle.
       basis.addParticles(cylinder, [o]) # nuclear unit cell
-      particle_layout.addParticle(basis, 1.0)
+      basis.addParticles(hexagon, [o]) # nuclear unit cell
+      particle_layout.addParticle(basis, 1.0, ba.kvector_t(0, 0, 0), ba.RotationZ((self.xi-30.)*deg))
       interference=ba.InterferenceFunction2DParaCrystal(ll, ll, 60.*deg, self.xi*deg, 0.*nm)
       interference.setDomainSizes(self.domain, self.domain)
       pdf=ba.FTDistribution2DCauchy(self.cauchy, self.cauchy)
@@ -164,8 +169,8 @@ class HCSample(ba.IMultiLayerBuilder):
       interference.setIntegrationOverXi(False)
     else:
       m_particle=ba.HomogeneousMagneticMaterial("PermalloyHole",
-                                                (self.surface_fraction-1./s3)*SLD_Py*sf, 0.,
-                                                (1+1./s3)*B_ext*self.bias_field*sf)
+                                                (self.surface_fraction-1.)*SLD_Py*sf, 0.,
+                                                (1+1.)*B_ext*self.bias_field*sf)
       cylinder_ff=ba.FormFactorCylinder(self.hc_inner_radius, self.py_d)
       cylinder=ba.Particle(m_particle, cylinder_ff)
 
@@ -173,11 +178,12 @@ class HCSample(ba.IMultiLayerBuilder):
       ln_a=ba.kvector_t(cos(30.*deg)*ll, sin(30.*deg)*ll, 0.)
       ln_b=ba.kvector_t(cos(90.*deg)*ll, sin(90.*deg)*ll, 0.)
 
-      basis.addParticles(cylinder, [o, o+ln_a, o+ln_b ]) # nuclear unit cell
+      basis.addParticles(cylinder, [o, o+ln_a, o+ln_b ]) # nuclear unit cell hole
+      basis.addParticles(hexagon, [o, o+ln_a, o+ln_b ]) # nuclear unit cell filling
       self.build_votex(basis) # magnetic unit cell
   
       particle_layout.addParticle(basis, 1.0, ba.kvector_t(0, 0, 0), ba.RotationZ((self.xi-30.)*deg))
-      interference=ba.InterferenceFunction2DParaCrystal(ll, ll, 60.*deg, self.xi*deg, 0.*nm)
+      interference=ba.InterferenceFunction2DParaCrystal(mll, mll, 60.*deg, (self.xi-30.)*deg, 0.*nm)
       interference.setDomainSizes(self.domain, self.domain)
       pdf=ba.FTDistribution2DCauchy(self.cauchy, self.cauchy)
       interference.setProbabilityDistributions(pdf, pdf)

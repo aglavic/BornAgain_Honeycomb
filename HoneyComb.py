@@ -12,6 +12,10 @@ from matplotlib.colors import LogNorm
 import pylab
 import bornagain as ba
 
+from matplotlib import rcParams
+rcParams['mathtext.default']='regular'
+rcParams["font.size"]="12"
+
 from HoneyCombSample import HCSample
 
 A=ba.angstrom
@@ -480,24 +484,24 @@ if __name__=='__main__':
   #run_simulation_powder(only_first=True)
 
 
-  INTEGRATE_XI=True
-  #Ms=0.
-  #MsB=15.
-  #run_offspec_powder_angular(model='ferro')
+  INTEGRATE_XI=False
+  Ms=0.
+  MsB=15.
+  run_offspec_powder_angular(model='ferro')
   #Ms=15.
   #MsB=5.
   #run_offspec_powder_angular(model='vortex')
 
 
 
-  Ms=0.
-  MsB=15.
-  alpha_i=0.35
-  run_simulation_powder(only_first=True)
+  #Ms=0.
+  #MsB=15.
+  #alpha_i=0.35
+  #run_simulation_powder(only_first=True)
 
-  Ms=15.
-  MsB=5.
-  alpha_i=0.35
-  run_simulation_powder(only_first=True, model='vortex')
+  #Ms=15.
+  #MsB=5.
+  #alpha_i=0.35
+  #run_simulation_powder(only_first=True, model='vortex')
 
   pylab.show()
