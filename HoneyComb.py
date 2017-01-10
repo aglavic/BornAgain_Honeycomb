@@ -4,28 +4,23 @@ Main script to run the simulation for the Honeycomb lattice sample.
 
 Author: Artur Glavic
 
-BornAgain verion 1.7.1
+BornAgain version 1.7.1
 """
-from numpy import sin, cos, arange, pi, linspace, array, ones, sqrt, meshgrid, loadtxt, exp, savetxt
+from numpy import pi, linspace, array, ones, meshgrid, loadtxt, exp, savetxt
 from scipy.interpolate import interp1d
-from matplotlib.colors import LogNorm
 import pylab
 import bornagain as ba
 
-from matplotlib import rcParams
-rcParams['mathtext.default']='regular'
-rcParams["font.size"]="12"
-
 from HoneyCombSample import HCSample
+from HoneyCombPlotting import BAPlotter
 
 A=ba.angstrom
 nm=ba.nm
 deg=ba.degree
+
 Ms=0.
 MsB=15.
 lattice_rotation=0.
-is_FM=True
-
 INTEGRATE_XI=False
 
 alpha_i_min, alpha_i_max=0.0, 4.0
@@ -37,13 +32,18 @@ alpha_f_min, alpha_f_max=0.0, 4.0
 tth_min, tth_max=-0.08, 4.4
 phi_f_offspec=0.3
 
-s3=sqrt(3.)
+BIN=4 # reduce resolution by this factor to speed up simulation
 
-BIN=2
+# neutron spin states
+_up=ba.kvector_t(0., 1., 0.)
+_down=-_up
 
+CHANNELS={'uu': (_up, _up),
+          'dd': (_down, _down),
+          'ud': (_up, _down),
+          'du': (_down, _up)}
 
-
-def get_simulation():
+def get_simulation_gisans(channel, **kwrds):
     """
     Create and return GISAXS simulation with beam and detector defined
     """
@@ -57,16 +57,21 @@ def get_simulation():
       xi_rotation=ba.DistributionGate(-90, 90)
       simulation.addParameterDistribution("*/SampleBuilder/xi", xi_rotation, 36)
 
+    SB=HCSample(**kwrds)
+    simulation.setSampleBuilder(SB)
+    simulation.setBeamPolarization(CHANNELS[channel][0])
+    simulation.setAnalyzerProperties(CHANNELS[channel][1], 1.0, 0.5)
+
     return simulation
 
-def get_simulation_offspec():
+def get_simulation_offspec(channel, **kwrds):
     """
     Create and return off-specular simulation with beam and detector defined
     """
     simulation=ba.OffSpecSimulation()
     simulation.setDetectorParameters(11,-phi_f_offspec*deg, phi_f_offspec,
                                      296/BIN, alpha_f_min*deg, alpha_f_max*deg)
-    # defining the beam  with incidence alpha_i varied between alpha_i_min and alpha_i_max
+
     alpha_i_axis=ba.FixedBinAxis("alpha_i", 1, alpha_i*deg, alpha_i*deg)
     simulation.setBeamParameters(lambda_i*A, alpha_i_axis, 0.0*deg)
     simulation.setBeamIntensity(1e6)
@@ -75,9 +80,14 @@ def get_simulation_offspec():
       xi_rotation=ba.DistributionGate(-90, 90)
       simulation.addParameterDistribution("*/SampleBuilder/xi", xi_rotation, 36)
 
+    SB=HCSample(**kwrds)
+    simulation.setSampleBuilder(SB)
+    simulation.setBeamPolarization(CHANNELS[channel][0])
+    simulation.setAnalyzerProperties(CHANNELS[channel][1], 1.0, 0.5)
+
     return simulation
 
-def get_simulation_offspec_angular(ai_min, ai_max, nbins):
+def get_simulation_offspec_angular(ai_min, ai_max, nbins, channel='uu', **kwrds):
     """
     Create and return off-specular simulation with beam and detector defined
     """
@@ -93,197 +103,177 @@ def get_simulation_offspec_angular(ai_min, ai_max, nbins):
       xi_rotation=ba.DistributionGate(-90, 90)
       simulation.addParameterDistribution("*/SampleBuilder/xi", xi_rotation, 36)
 
+    SB=HCSample(**kwrds)
+    simulation.setSampleBuilder(SB)
+    simulation.setBeamPolarization(CHANNELS[channel][0])
+    simulation.setAnalyzerProperties(CHANNELS[channel][1], 1.0, 0.5)
+
     return simulation
 
-def get_simulation_spec():
+def get_simulation_spec(channel, **kwrds):
     """
-    Create and return off-specular simulation with beam and detector defined
+    Create and return specular simulation with beam and detector defined.
+    
+    Not yet working.
     """
     simulation=ba.SpecularSimulation()
-    simulation.setBeamParameters(4.*pi*A, 1000, 0., 0.3)
+    simulation.setBeamParameters(lambda_i*A, 1000, alpha_i_min*deg, alpha_i_max*deg)
+
+    SB=HCSample(**kwrds)
+    simulation.setSampleBuilder(SB)
+
+    # this does not work!!!
+    simulation.setBeamPolarization(CHANNELS[channel][0])
+    simulation.setAnalyzerProperties(CHANNELS[channel][1], 1.0, 0.5)
+
     return simulation
 
 
-def sim_and_show(model='ferro'):
-    SB=HCSample(bias_field=MsB, edge_field=Ms, lambda_i=lambda_i,
+def sim_and_show_gisans(model='ferro'):
+    """
+    Simulate all GISANS channels and plot the result.
+    """
+    kwrds=dict(bias_field=MsB, edge_field=Ms, lambda_i=lambda_i,
                 magnetic_model=model, xi=lattice_rotation)
-    simulation=get_simulation()
-    simulation.setSampleBuilder(SB)
-    #simulation.printParameters()
-    simulation.setBeamPolarization(up)
-    simulation.setAnalyzerProperties(up, 1.0, 0.5)
+
+    simulation=get_simulation_gisans('uu', **kwrds)
     simulation.runSimulation()
     uu=simulation.getIntensityData().getArray()
 
-    SB=HCSample(bias_field=MsB, edge_field=Ms, lambda_i=lambda_i,
-                magnetic_model=model, xi=lattice_rotation)
-    simulation=get_simulation()
-    simulation.setSampleBuilder(SB)
-    simulation.setBeamPolarization(down)
-    simulation.setAnalyzerProperties(down, 1.0, 0.5)
+    simulation=get_simulation_gisans('dd', **kwrds)
     simulation.runSimulation()
     dd=simulation.getIntensityData().getArray()
 
-    SB=HCSample(bias_field=MsB, edge_field=Ms, lambda_i=lambda_i,
-                magnetic_model=model, xi=lattice_rotation)
-    simulation=get_simulation()
-    simulation.setSampleBuilder(SB)
-    simulation.setBeamPolarization(up)
-    simulation.setAnalyzerProperties(down, 1.0, 0.5)
+    simulation=get_simulation_gisans('ud', **kwrds)
     simulation.runSimulation()
     ud=simulation.getIntensityData().getArray()
 
-    Imax=1e2#max(uu.max(), dd.max(), ud.max())
-    Imin=1e-4*Imax
+    simulation=get_simulation_gisans('du', **kwrds)
+    simulation.runSimulation()
+    du=simulation.getIntensityData().getArray()
 
-    fig=pylab.figure(figsize=(18, 5))
-    fig.suptitle(r'Simulations for $\lambda=%.2f~\AA$'%lambda_i, fontsize=18)
-    pylab.subplot(131)
+    Imax=max(uu.max(), dd.max(), ud.max(), du.max())
+    Imin=1e-5*Imax
+
+    plt=BAPlotter(nitems=3, rows=1, title=r'GISANS for $\lambda$=%.2f $\AA$'%lambda_i,
+                  gisans=True, xlim=(-0.05, 0.05), ylim=(0., 0.1))
+    extent=[2*pi/lambda_i*phi_f_min*deg, 2*pi/lambda_i*phi_f_max*deg,
+            2*pi/lambda_i*tth_min*deg, 2*pi/lambda_i*tth_max*deg]
     # showing the result
-    im=pylab.imshow((uu+dd)/2., norm=LogNorm(Imin, Imax),
-                 extent=[2*pi/lambda_i*phi_f_min*deg, 2*pi/lambda_i*phi_f_max*deg,
-                         2*pi/lambda_i*tth_min*deg, 2*pi/lambda_i*tth_max*deg],
-                    aspect='auto', cmap='gist_ncar')
-    cb=pylab.colorbar(im)
-    pylab.xlim(-0.04, 0.04)
-    pylab.ylim(0., 0.1)
-    pylab.xticks(linspace(-0.04, 0.04, 5))
-    pylab.title(r'up-up', fontsize=14)
-    cb.set_label(r'Intensity (arb. u.)', fontsize=14)
-    pylab.xlabel(r'$Q_y~(\AA^{-1})$', fontsize=14)
-    pylab.ylabel(r'$Q_z~(\AA^{-1})$', fontsize=14)
-
-    # showing the result
-    pylab.subplot(132)
-    im=pylab.imshow(uu-dd, norm=LogNorm(Imin, Imax),
-                 extent=[2*pi/lambda_i*phi_f_min*deg, 2*pi/lambda_i*phi_f_max*deg,
-                         2*pi/lambda_i*tth_min*deg, 2*pi/lambda_i*tth_max*deg],
-                    aspect='auto', cmap='gist_ncar')
-    cb=pylab.colorbar(im)
-    pylab.xlim(-0.04, 0.04)
-    pylab.ylim(0., 0.1)
-    pylab.xticks(linspace(-0.04, 0.04, 5))
-    pylab.title(r'down-down', fontsize=14)
-    cb.set_label(r'Intensity (arb. u.)', fontsize=14)
-    pylab.xlabel(r'$Q_y~(\AA^{-1})$', fontsize=14)
-    pylab.ylabel(r'$Q_z~(\AA^{-1})$', fontsize=14)
-
-    # showing the result
-    pylab.subplot(133)
-    im=pylab.imshow(ud, norm=LogNorm(Imin, Imax),
-                 extent=[2*pi/lambda_i*phi_f_min*deg, 2*pi/lambda_i*phi_f_max*deg,
-                         2*pi/lambda_i*tth_min*deg, 2*pi/lambda_i*tth_max*deg],
-                    aspect='auto', cmap='gist_ncar')
-    cb=pylab.colorbar(im)
-    pylab.xlim(-0.04, 0.04)
-    pylab.ylim(0., 0.1)
-    pylab.xticks(linspace(-0.04, 0.04, 5))
-    pylab.title(r'up-down', fontsize=14)
-    cb.set_label(r'Intensity (arb. u.)', fontsize=14)
-    pylab.xlabel(r'$Q_y~(\AA^{-1})$', fontsize=14)
-    pylab.ylabel(r'$Q_z~(\AA^{-1})$', fontsize=14)
-
-    pylab.tight_layout(rect=(0, 0, 1, 0.95))
+    plt.imshow((uu+dd)/2., extent, Imin=Imin, Imax=Imax, title='NSF [(++)+(--)]')
+    plt.imshow(uu-dd, extent, Imin=Imin, Imax=Imax, title='FM [(++)-(--)]')
+    plt.imshow((ud+du)/2., extent, Imin=Imin, Imax=Imax, title='SF [(+-)+(-+)]')
 
 
-def run_simulation_powder(only_first=False, model='ferro'):
+def run_gisans(only_first=False, model='ferro'):
     """
-    Run simulation and plot results
+    Run simulation for GISANS and plot result
     """
     global lattice_rotation, lambda_i, up, down
     up=ba.kvector_t(0., 1., 0.)
     down=-up
 
     lambda_i=4.7
-    sim_and_show(model=model)
+    sim_and_show_gisans(model=model)
 
     if only_first:
         return
 
     lambda_i=5.4
-    sim_and_show()
+    sim_and_show_gisans()
 
     lambda_i=6.1
-    sim_and_show()
+    sim_and_show_gisans()
 
     lambda_i=6.8
-    sim_and_show()
+    sim_and_show_gisans()
 
 
-def run_offspec_powder(model='ferro'):
+def run_offspec(model='ferro'):
     """
-    Run simulation and plot results
+    Run simulation for ToF off-specular and plot results
     """
     global lattice_rotation, alpha_i, lambda_i
     lambda_i=5.8
     alpha_i=0.3
-    up=ba.kvector_t(0., 1., 0.)
-    down=-up
 
-    result=[]
-    ais=[]
-    pis=[]
-    pfs=[]
-    lis=[]
+    kwrds=dict(bias_field=MsB, edge_field=Ms, magnetic_model=model)
+
+    uu=[]; dd=[]; ud=[]; du=[]
+    ais=[]; pis=[]; pfs=[]; lis=[]
     print u'Simulating αi=%.2f'%alpha_i
     for lambda_i in linspace(7.8, 2.6, 60):
+      kwrds['lambda_i']=lambda_i
       lis.append(lambda_i*ones(296/BIN))
       ais.append(alpha_i*ones(296/BIN))
       pis.append(2.*pi/lambda_i*alpha_i*deg*ones(296/BIN))
       pfs.append(2.*pi/lambda_i*linspace(alpha_f_min, alpha_f_max, 296/BIN)*deg)
-      SB=HCSample(bias_field=MsB, edge_field=Ms, lambda_i=lambda_i, magnetic_model=model)
-      simulation=get_simulation_offspec()
-      simulation.setSampleBuilder(SB)
-      simulation.setBeamPolarization(up)
-      simulation.setAnalyzerProperties(up, 1.0, 0.5)
+
+      simulation=get_simulation_offspec('uu', **kwrds)
       simulation.runSimulation()
-      result.append(simulation.getIntensityData().getArray()[::-1, 0])
+      uu.append(simulation.getIntensityData().getArray()[::-1, 0])
+      simulation=get_simulation_offspec('dd', **kwrds)
+      simulation.runSimulation()
+      dd.append(simulation.getIntensityData().getArray()[::-1, 0])
+      if model!='ferro':
+        simulation=get_simulation_offspec('ud', **kwrds)
+        simulation.runSimulation()
+        ud.append(simulation.getIntensityData().getArray()[::-1, 0])
+        simulation=get_simulation_offspec('du', **kwrds)
+        simulation.runSimulation()
+        du.append(simulation.getIntensityData().getArray()[::-1, 0])
 
     for alpha_i in [0.54, 0.97, 1.75]:
       print u'Simulating αi=%.2f'%alpha_i
-      lambda_i=4.0
       for lambda_i in linspace(5.4, 2.6, 20):
+        kwrds['lambda_i']=lambda_i
         lis.append(lambda_i*ones(296/BIN))
         ais.append(alpha_i*ones(296/BIN))
         pis.append(2.*pi/lambda_i*alpha_i*deg*ones(296/BIN))
         pfs.append(2.*pi/lambda_i*linspace(alpha_f_min, alpha_f_max, 296/BIN)*deg)
-        SB=HCSample(bias_field=MsB, edge_field=Ms, lambda_i=lambda_i, magnetic_model=model)
-        simulation=get_simulation_offspec()
-        simulation.setSampleBuilder(SB)
-        simulation.setBeamPolarization(up)
-        simulation.setAnalyzerProperties(up, 1.0, 0.5)
-        simulation.runSimulation()
-        result.append(simulation.getIntensityData().getArray()[::-1, 0])
 
-    result=array(result)*(array(ais)/0.3)#**2/array(lis)##
+        simulation=get_simulation_offspec('uu', **kwrds)
+        simulation.runSimulation()
+        uu.append(simulation.getIntensityData().getArray()[::-1, 0])
+        simulation=get_simulation_offspec('dd', **kwrds)
+        simulation.runSimulation()
+        dd.append(simulation.getIntensityData().getArray()[::-1, 0])
+        if model!='ferro':
+          simulation=get_simulation_offspec('ud', **kwrds)
+          simulation.runSimulation()
+          ud.append(simulation.getIntensityData().getArray()[::-1, 0])
+          simulation=get_simulation_offspec('du', **kwrds)
+          simulation.runSimulation()
+          du.append(simulation.getIntensityData().getArray()[::-1, 0])
+
+    uu=array(uu)*(array(ais)/0.3)*array(lis)**2## Why do I need to scale by λ²?
+    dd=array(dd)*(array(ais)/0.3)*array(lis)**2##
+    if model!='ferro':
+      ud=array(ud)*(array(ais)/0.3)*array(lis)**2## Why do I need to scale by λ²?
+      du=array(ud)*(array(ais)/0.3)*array(lis)**2##
+      plt=BAPlotter(nitems=3, title=r'ToF simulations for vortex state',
+                    gisans=False, xlim=(-0.05, 0.05), ylim=(0., 0.15))
+    else:
+      plt=BAPlotter(nitems=2, title=r'ToF simulations for ferromagnetic state',
+                    gisans=False, xlim=(-0.05, 0.05), ylim=(0., 0.15))
     pis=array(pis); pfs=array(pfs)
 
-    Imax=result.max()
-    Imin=Imax*1e-8
+    Imax=max(uu.max(), dd.max())
+    Imin=Imax*1e-7
 
-    pylab.figure(figsize=(5.5, 7))
-    im=pylab.pcolormesh(pis-pfs, pis+pfs, result, norm=LogNorm(Imin, Imax))
-    cb=pylab.colorbar(im)
-    pylab.xlim(-0.05, 0.05)
-    pylab.ylim(0., 0.15)
-    cb.set_label(r'Intensity (arb. u.)', fontsize=16)
-    pylab.xlabel(r'$p_i-p_f (\AA^{-1})$', fontsize=16)
-    pylab.ylabel(r'$Q_z (\AA^{-1})$', fontsize=16)
 
-    #simulation=get_simulation_spec()
-    #simulation.setSample(sample)
-    #simulation.runSimulation()
-    #result=simulation.getScalarR(0)
-    #pylab.figure()
-    #pylab.semilogy(abs(result))
+    plt.pcolormesh(pis-pfs, pis+pfs, (uu+dd)/2., title='NSF [(++)+(--)]', Imin=Imin, Imax=Imax)
+    plt.pcolormesh(pis-pfs, pis+pfs, uu-dd, title='FM [(++)-(--)]', Imin=Imin, Imax=Imax)
 
-def run_offspec_powder_angular(model='ferro', save=None):
+    if model!='ferro':
+      plt.pcolormesh(pis-pfs, pis+pfs, (ud+du)/2., title='SF [(+-)+(-+)]', Imin=Imin, Imax=Imax)
+
+
+def run_offspec_angular(model='ferro', save=None):
     """
-    Run simulation and plot results
+    Run simulation for angular dispersive off-specular and plot results
     """
     global lattice_rotation, alpha_i, lambda_i
-    up=ba.kvector_t(0., 1., 0.)
-    down=-up
 
     lambda_i=4.0
     alpha_i=0.3
@@ -293,50 +283,30 @@ def run_offspec_powder_angular(model='ferro', save=None):
     ru_q=interp1d(qu, ru, bounds_error=False, fill_value=1.0)
     rd_q=interp1d(qd, rd, bounds_error=False, fill_value=1.0)
 
-    SB=HCSample(bias_field=MsB, edge_field=Ms, lambda_i=lambda_i,
+    kwrds=dict(bias_field=MsB, edge_field=Ms, lambda_i=lambda_i,
                 magnetic_model=model)
-    simulation=get_simulation_offspec_angular(0.05, 2.5, 200/BIN)
-    simulation.setSampleBuilder(SB)
-    simulation.setBeamPolarization(up)
-    simulation.setAnalyzerProperties(up, 1.0, 0.5)
+
+
+    simulation=get_simulation_offspec_angular(0.05, 2.5, 200/BIN, 'uu', **kwrds)
     simulation.runSimulation()
     uu=simulation.getIntensityData().getArray()[::-1]
-
-    SB=HCSample(bias_field=MsB, edge_field=Ms, lambda_i=lambda_i,
-                magnetic_model=model)
-    simulation=get_simulation_offspec_angular(0.05, 2.5, 200/BIN)
-    simulation.setSampleBuilder(SB)
-    simulation.setBeamPolarization(down)
-    simulation.setAnalyzerProperties(down, 1.0, 0.5)
+    simulation=get_simulation_offspec_angular(0.05, 2.5, 200/BIN, 'dd', **kwrds)
     simulation.runSimulation()
     dd=simulation.getIntensityData().getArray()[::-1]
     
     if model!='ferro':
-      SB=HCSample(bias_field=MsB, edge_field=Ms, lambda_i=lambda_i,
-                  magnetic_model=model)
-      simulation=get_simulation_offspec_angular(0.05, 2.5, 200/BIN)
-      simulation.setSampleBuilder(SB)
-      simulation.setBeamPolarization(up)
-      simulation.setAnalyzerProperties(down, 1.0, 0.5)
+      simulation=get_simulation_offspec_angular(0.05, 2.5, 200/BIN, 'ud', **kwrds)
       simulation.runSimulation()
       ud=simulation.getIntensityData().getArray()[::-1]
-
-      SB=HCSample(bias_field=MsB, edge_field=Ms, lambda_i=lambda_i,
-                  magnetic_model=model)
-      simulation=get_simulation_offspec_angular(0.05, 2.5, 200/BIN)
-      simulation.setSampleBuilder(SB)
-      simulation.setBeamPolarization(down)
-      simulation.setAnalyzerProperties(up, 1.0, 0.5)
+      simulation=get_simulation_offspec_angular(0.05, 2.5, 200/BIN, 'du', **kwrds)
       simulation.runSimulation()
       du=simulation.getIntensityData().getArray()[::-1]
 
-      fig=pylab.figure(figsize=(13.5, 6))
-      fig.suptitle(r'Simulations for vortex state', fontsize=18)
-      spn=130
+      plt=BAPlotter(nitems=3, title=r'Simulations for vortex state',
+                    gisans=False, xlim=(-0.05, 0.05), ylim=(0., 0.15))
     else:
-      fig=pylab.figure(figsize=(9, 6))
-      fig.suptitle(r'Simulations for ferromagnetic state', fontsize=18)
-      spn=120
+      plt=BAPlotter(nitems=2, title=r'Simulations for ferromagnetic state',
+                    gisans=False, xlim=(-0.05, 0.05), ylim=(0., 0.15))
 
     k=2.*pi/lambda_i
     ais=linspace(0.05, 2.5, 200/BIN)
@@ -356,36 +326,13 @@ def run_offspec_powder_angular(model='ferro', save=None):
       header+=' ud du'
 
     Imax=uu.max()
-    Imin=Imax*1e-6
+    Imin=Imax*1e-7
 
-    pylab.subplot(spn+1)
-    pylab.title('NSF [(++)+(--)]')
-    im=pylab.pcolormesh(pis-pfs, pis+pfs, (uu+dd)/2., norm=LogNorm(Imin, Imax), cmap='gist_ncar')
-    pylab.xlim(-0.05, 0.05)
-    pylab.ylim(0., 0.15)
-    pylab.xlabel(r'$p_i-p_f (\AA^{-1})$', fontsize=16)
-    pylab.ylabel(r'$Q_z (\AA^{-1})$', fontsize=16)
-
-    pylab.subplot(spn+2)
-    pylab.title('FM [(++)-(--)]')
-    im=pylab.pcolormesh(pis-pfs, pis+pfs, uu-dd, norm=LogNorm(Imin, Imax), cmap='gist_ncar')
-    pylab.xlim(-0.05, 0.05)
-    pylab.ylim(0., 0.15)
-    pylab.xlabel(r'$p_i-p_f (\AA^{-1})$', fontsize=16)
-    pylab.ylabel(r'$Q_z (\AA^{-1})$', fontsize=16)
+    plt.pcolormesh(pis-pfs, pis+pfs, (uu+dd)/2., title='NSF [(++)+(--)]', Imin=Imin, Imax=Imax)
+    plt.pcolormesh(pis-pfs, pis+pfs, uu-dd, title='FM [(++)-(--)]', Imin=Imin, Imax=Imax)
 
     if model!='ferro':
-      pylab.subplot(spn+3)
-      pylab.title('SF [(+-)+(-+)]')
-      im=pylab.pcolormesh(pis-pfs, pis+pfs, (ud+du)/2., norm=LogNorm(Imin, Imax), cmap='gist_ncar')
-      pylab.xlim(-0.05, 0.05)
-      pylab.ylim(0., 0.15)
-      pylab.xlabel(r'$p_i-p_f (\AA^{-1})$', fontsize=16)
-      pylab.ylabel(r'$Q_z (\AA^{-1})$', fontsize=16)
-
-    cb=pylab.colorbar(im)
-    cb.set_label(r'Intensity (arb. u.)', fontsize=16)
-    pylab.tight_layout(rect=(0, 0, 1, 0.95))
+      plt.pcolormesh(pis-pfs, pis+pfs, (ud+du)/2., title='SF [(+-)+(-+)]', Imin=Imin, Imax=Imax)
 
     if save is not None:
       fh=open(save, 'w')
@@ -398,35 +345,27 @@ def run_offspec_powder_angular(model='ferro', save=None):
 
 
 if __name__=='__main__':
-#  Ms=0.
-#  alpha_i=0.35
-#  run_simulation_powder(only_first=True)
-
-
-  #Ms=0.
-  #alpha_i=1.40
-  #run_simulation_powder(only_first=True)
-
-
-  INTEGRATE_XI=True
+  INTEGRATE_XI=False # should be used for actual simulation, False will speed it up very much
   Ms=0.
   MsB=30.
-  run_offspec_powder_angular(model='vortex', save='data/offspec_simulation.dat')
+  run_offspec_angular(model='ferro')
+  #run_offspec(model='ferro')
+  #run_offspec_angular(model='vortex') # should be run for actual simulation to get rid of differences due to unit cell size
   Ms=20.
   MsB=5.
-  run_offspec_powder_angular(model='vortex', save='data/offspec_simulation_vortex.dat')
+  run_offspec_angular(model='vortex') # should be run for actual simulation to get rid of differences due to unit cell size
 
+  INTEGRATE_XI=True # should be used for actual simulation, False will speed it up very much
+  Ms=0.
+  MsB=30.
+  run_gisans(only_first=True, model='ferro')
+  Ms=20.
+  MsB=5.
+  run_gisans(only_first=True, model='vortex')
 
+  # this does not work!!!
+  #simulation=get_simulation_spec('uu')
+  #simulation.runSimulation()
+  #pylab.semilogy(simulation.getScalarR(0))
 
-  #Ms=0.
-  #MsB=15.
-  #alpha_i=0.35
-  #run_simulation_powder(only_first=True)
-  #run_simulation_powder(only_first=True, model='vortex')
-
-  #Ms=15.
-  #MsB=5.
-  #alpha_i=0.35
-  #run_simulation_powder(only_first=True, model='vortex')
-
-  #pylab.show()
+  pylab.show()
