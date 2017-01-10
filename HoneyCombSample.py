@@ -4,20 +4,15 @@ Definition of the sample model for the Honeycomb lattice simulation.
 
 Author: Artur Glavic
 
-BornAgain verion 1.7.1  
+BornAgain version 1.7.1  
 '''
 
-import ctypes
 import bornagain as ba
+from ba_helper import MLBuilder
 from numpy import pi, sin, cos, sqrt
 
 # define some abbreviations
 deg=ba.deg;AA=ba.angstrom;nm=ba.nm
-
-#expand kvector_t
-ba.kvector_t.__sub__=lambda self, other: self+(-1.0*other)
-ba.kvector_t.__div__=lambda self, other: self*(1./other)
-ba.kvector_t.__neg__=lambda self: (-1.0)*self
 
 # constants used for the model
 SLD_Si=2.029e-6*AA**-2 #
@@ -26,7 +21,7 @@ SLD_Top=2.5e-6*AA**-2 # Unknown surface layer
 s3=sqrt(3.)
 
 
-class HCSample(ba.IMultiLayerBuilder):
+class HCSample(MLBuilder):
   """
   Implement a sample builder to allow coupling of certain parameters to each other.
   """
@@ -47,17 +42,12 @@ class HCSample(ba.IMultiLayerBuilder):
   lambda_i=None
   domain=None
   cauchy=None
-
-  def _registerParameter(self, name, value):
-    # convenience method to add parameters to the model
-    param=ctypes.c_double(value)
-    self.registerParameter(name, ctypes.addressof(param))
-    return param
+  interference_model='paracrystal'
 
   def __init__(self, py_d=13.4*nm, top_d=8.0*nm,
                hc_lattice_length=35.0*nm, hc_inner_radius=13.0*nm,
                magnetic_model='vortex', bias_field=0.0, edge_field=1.0,
-               xi=0., domain=3000.*nm, cauchy=1.5*nm,
+               xi=0., domain=250.*nm, cauchy=15*nm,
                lambda_i=4.0):
     ba.IMultiLayerBuilder.__init__(self)
 
@@ -84,6 +74,7 @@ class HCSample(ba.IMultiLayerBuilder):
     Constructs the sample for current values of parameters.
     '''
     sf=(self.lambda_i*AA)**2/2./pi
+    #print self.lambda_i, SLD_Py*sf
 
     # the magnetic unti cell lattice length, 30degree tilted, sqrt(3)xsqrt(3)
     self.mag_lattice_length=self.hc_lattice_length*s3
@@ -101,7 +92,7 @@ class HCSample(ba.IMultiLayerBuilder):
                                            self.surface_fraction*B_ext*self.bias_field*sf)
     m_top=ba.HomogeneousMaterial("SurfaceLayer", self.surface_fraction*SLD_Top*sf, 0.)
 
-    # initialize model and ambience layer
+    # initialize model and ambiance layer
     multi_layer=ba.MultiLayer()
     air_layer=ba.Layer(m_air)
     multi_layer.addLayer(air_layer)
@@ -140,57 +131,62 @@ class HCSample(ba.IMultiLayerBuilder):
     # particle SLD to produce a contrast between average density and particle of Py-SLD
     # external field direction
     B_ext=ba.kvector_t(0., 1., 0.)
-    m_hole=ba.HomogeneousMagneticMaterial("PermalloyHole",
-                                              -1.*SLD_Py*sf, 0.,-B_ext*self.bias_field*sf)
-    m_full=ba.HomogeneousMagneticMaterial("PermalloyFull",
-                                              (1.-self.surface_fraction)*SLD_Py*sf, 0.,
-                                              B_ext*self.bias_field*sf)
+    m_hole=ba.HomogeneousMagneticMaterial("PermalloyHole", 0., 0.,
+                                          0.*B_ext)
+    m_full=ba.HomogeneousMagneticMaterial("PermalloyFull", SLD_Py*sf, 0.,
+                                          (self.surface_fraction-1.)*B_ext*self.bias_field*sf)
     ll=self.hc_lattice_length
     mll=self.mag_lattice_length
 
     cylinder_ff=ba.FormFactorCylinder(self.hc_inner_radius, self.py_d)
     cylinder=ba.Particle(m_hole, cylinder_ff)
     hexagon_ff=ba.FormFactorPrism6(mll/2., self.py_d)
-    hexagon=ba.Particle(m_full, hexagon_ff)
 
     o=ba.kvector_t(0.0, 0.0,-self.py_d) # origin is the bottom of the py layer
     basis=ba.ParticleComposition()
     particle_layout=ba.ParticleLayout()
     
     if self.magneti_model=='ferro':
+      hexagon=ba.Particle(m_full, hexagon_ff)
+      cell=ba.ParticleCoreShell(hexagon, cylinder)
       # for pure ferromagnetism the unit cell can be reduced to one particle.
-      basis.addParticles(cylinder, [o]) # nuclear unit cell
-      basis.addParticles(hexagon, [o]) # nuclear unit cell
+      basis.addParticles(cell, [o]) # nuclear unit cell
       particle_layout.addParticle(basis, 1.0, ba.kvector_t(0, 0, 0), ba.RotationZ((self.xi-30.)*deg))
-      interference=ba.InterferenceFunction2DParaCrystal(ll, ll, 60.*deg, self.xi*deg, 0.*nm)
-      interference.setDomainSizes(self.domain, self.domain)
-      pdf=ba.FTDistribution2DCauchy(self.cauchy, self.cauchy)
-      interference.setProbabilityDistributions(pdf, pdf)
-      interference.setIntegrationOverXi(False)
     else:
-      m_particle=ba.HomogeneousMagneticMaterial("PermalloyHole",
-                                                (self.surface_fraction-1.)*SLD_Py*sf, 0.,
-                                                (1+1.)*B_ext*self.bias_field*sf)
-      cylinder_ff=ba.FormFactorCylinder(self.hc_inner_radius, self.py_d)
-      cylinder=ba.Particle(m_particle, cylinder_ff)
-
+      hexagon=ba.Particle(m_full, hexagon_ff)
+      cell=ba.ParticleCoreShell(hexagon, cylinder)
       # vortex magnetic model
       ln_a=ba.kvector_t(cos(30.*deg)*ll, sin(30.*deg)*ll, 0.)
       ln_b=ba.kvector_t(cos(90.*deg)*ll, sin(90.*deg)*ll, 0.)
 
-      basis.addParticles(cylinder, [o, o+ln_a, o+ln_b ]) # nuclear unit cell hole
-      basis.addParticles(hexagon, [o, o+ln_a, o+ln_b ]) # nuclear unit cell filling
+      basis.addParticles(cell, [o, o+ln_a, o+ln_b ]) # nuclear unit cell hole
       self.build_votex(basis) # magnetic unit cell
-  
       particle_layout.addParticle(basis, 1.0, ba.kvector_t(0, 0, 0), ba.RotationZ((self.xi-30.)*deg))
-      interference=ba.InterferenceFunction2DParaCrystal(mll, mll, 60.*deg, (self.xi-30.)*deg, 0.*nm)
+
+    interference=self.get_interference_function()
+    particle_layout.addInterferenceFunction(interference)
+    return particle_layout
+
+  def get_interference_function(self):
+
+    if self.magneti_model=='ferro':
+      ll=self.hc_lattice_length
+      rot=self.xi
+    else:
+      ll=self.mag_lattice_length
+      rot=self.xi-30.
+
+    if self.interference_model=='crystal':
+      interference=ba.InterferenceFunction2DLattice(ll, ll, 60.*deg, rot*deg)
+      pdf=ba.FTDecayFunction2DCauchy(self.cauchy, self.cauchy)
+      interference.setDecayFunction(pdf)
+    else:
+      interference=ba.InterferenceFunction2DParaCrystal(ll, ll, 60.*deg, rot*deg, self.domain)
       interference.setDomainSizes(self.domain, self.domain)
       pdf=ba.FTDistribution2DCauchy(self.cauchy, self.cauchy)
       interference.setProbabilityDistributions(pdf, pdf)
       interference.setIntegrationOverXi(False)
-  
-    particle_layout.addInterferenceFunction(interference)
-    return particle_layout
+    return interference
 
   def build_votex(self, basis):
     '''

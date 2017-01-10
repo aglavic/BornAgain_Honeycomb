@@ -4,6 +4,6 @@ Help module to do the plotting of simulation results.
 
 Author: Artur Glavic
 
-BornAgain verion 1.7.1
+BornAgain version 1.7.1
 '''
 
