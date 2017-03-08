@@ -236,18 +236,18 @@ def run_gisans(only_first=False, model='ferro', save=None):
     lambda_i=6.8
     sim_and_show_gisans(model=model, save=save)
 
-def run_gisaxs(ai=0.25, save=None):
+def run_gisaxs(ai=0.15, save=None):
     """
     Run simulation for GISANS and plot result
     """
     global lattice_rotation, lambda_i, alpha_i
     alpha_i=ai
-    lambda_i=1.54
+    lambda_i=1.341 # Ga Kα
 
     kwrds=dict(bias_field=MsB, edge_field=Ms, lambda_i=lambda_i,
-              hc_lattice_length=27.7*nm, hc_inner_radius=10.0*nm,
+              hc_lattice_length=32.0*nm, hc_inner_radius=14.0*nm,
               domain=300.*nm, cauchy=1.*nm,
-              py_d=16.0*nm, top_d=0.0*nm,
+              py_d=13.4*nm, top_d=8.0*nm,
               basic_model='xray', xi=lattice_rotation)
 
     simulation=get_simulation_gisaxs(**kwrds)
@@ -454,31 +454,32 @@ def debug(model='ferro'):
 if __name__=='__main__':
   #debug(model='ice-2') # call that throws actual usable python error
 
-  INTEGRATE_XI=True # should be used for actual simulation, False will speed it up very much
+  INTEGRATE_XI=False # should be used for actual simulation, False will speed it up very much
   Ms=0.
-  MsB=0.10e6
-  run_offspec_angular(model='ferro', save='data/offspec_ferro.dat')
-  run_offspec(model='ferro', save='data/offspec_tof_ferro.dat')
+  MsB=1e5
+  run_offspec_angular(model='ferro', save=None)#'data/offspec_ferro.dat')
+  run_offspec(model='ferro', save=None)#'data/offspec_tof_ferro.dat')
 #  Ms=1.5e6
-#  MsB=1e3
+#  MsB=1e4
+#  run_offspec_angular(model='glass', save='data/offspec_glass.dat') # should be run for actual simulation to get rid of differences due to unit cell size
+#  run_offspec_angular(model='ice-1', save='data/offspec_ice-1.dat') # should be run for actual simulation to get rid of differences due to unit cell size
+#  run_offspec_angular(model='ice-2', save='data/offspec_ice-2.dat') # should be run for actual simulation to get rid of differences due to unit cell size
 #  run_offspec_angular(model='vortex', save='data/offspec_vortex.dat') # should be run for actual simulation to get rid of differences due to unit cell size
 #
-#  INTEGRATE_XI=True # should be used for actual simulation, False will speed it up very much
 #  Ms=0.
-#  MsB=0.03e6
-#  print "Simulating ferro model"
+#  MsB=1e5
 #  run_gisans(only_first=True, model='ferro', save='data/GISANS_ferro.dat')
 #  Ms=1.5e6
-#  MsB=0.001e6
-#  run_gisans(only_first=False, model='glass', save='data/GISANS_glass.dat')
+#  MsB=1e4
+#  run_gisans(only_first=True, model='glass', save='data/GISANS_glass.dat')
 #  run_gisans(only_first=True, model='ice-1', save='data/GISANS_ice-1.dat')
 #  run_gisans(only_first=True, model='ice-2', save='data/GISANS_ice-2.dat')
-#  run_gisans(only_first=False, model='vortex', save='data/GISANS_vortex.dat')
-  #run_gisaxs()
-
+#  run_gisans(only_first=True, model='vortex', save='data/GISANS_vortex.dat')
+#  run_gisaxs(save='data/GISAXS.dat')
+  
   # this does not work!!!
   #simulation=get_simulation_spec('uu')
   #simulation.runSimulation()
   #pylab.semilogy(simulation.getScalarR(0))
-
+  
   pylab.show()

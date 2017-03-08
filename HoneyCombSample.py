@@ -24,11 +24,11 @@ s3=sqrt(3.)
 DENS={  # FU density dictionary
   'Si': 0.04996*AA**-3,
   'Py': 0.090347072*AA**-3,
-  'Top': 0.04*AA**-3,
+  'Top': 0.03*AA**-3,
   }
 FU={ # fomula unit dictionary
   'Si': ['Si'],
-  'Py': ['Ni*0.8', 'Fe*0.3'],
+  'Py': ['Ni*0.8', 'Fe*0.2'],
   'Top': ['Ni*0.8', 'Fe*0.2'],
   }
 RhoB0=2.853e-6*AA**-2
@@ -97,7 +97,7 @@ class HCSample(MLBuilder):
       return self.edge_field*wl*RhoB0
     if self.basic_model=='xray':
       fp.set_wavelength(self.lambda_i)
-      itm='fp.%s'
+      itm='2.82*fp.%s'
     else:
       itm='bc.%s'
     SLD=0.j
@@ -119,14 +119,14 @@ class HCSample(MLBuilder):
 
     # define materials used in the model
     m_air=ba.HomogeneousMaterial("Air", 0.0, 0.0)
-    m_substrate=ba.HomogeneousMaterial("Silicon", self.get_n('Si').real, self.get_n('Si').imag)
+    m_substrate=ba.HomogeneousMaterial("Silicon", self.get_n('Si').real,-self.get_n('Si').imag)
     # average density of the Py layer
     m_layer=ba.HomogeneousMagneticMaterial("PermalloyLayer",
-                                           self.surface_fraction*self.get_n('Py').real,
-                                           self.surface_fraction*self.get_n('Py').imag,
-                                           self.surface_fraction*B_ext*self.get_n('MagB'))
+                                            self.surface_fraction*self.get_n('Py').real,
+                                           -self.surface_fraction*self.get_n('Py').imag,
+                                            self.surface_fraction*B_ext*self.get_n('MagB'))
     m_top=ba.HomogeneousMaterial("SurfaceLayer", self.surface_fraction*self.get_n('Top').real,
-                                 self.surface_fraction*self.get_n('Top').imag)
+                                 -self.surface_fraction*self.get_n('Top').imag)
 
     # initialize model and ambiance layer
     multi_layer=ba.MultiLayer()
@@ -182,7 +182,7 @@ class HCSample(MLBuilder):
     m_hole=ba.HomogeneousMagneticMaterial("PermalloyHole", 0., 0.,
                                           0.*B_ext)
     m_full=ba.HomogeneousMagneticMaterial("PermalloyFull", self.get_n('Py').real,
-                                          self.get_n('Py').imag,
+                                          -self.get_n('Py').imag,
                                           (self.surface_fraction-1.)*B_ext*self.get_n('MagB'))
     ll=self.hc_lattice_length
     mll=self.mag_lattice_length
@@ -258,8 +258,11 @@ class HCSample(MLBuilder):
     # and almost half the lattice length
     spin_ff=ba.FormFactorBox(ll*0.4, ll-2.*r, self.py_d)
 
+    B_ext=ba.kvector_t(0., 1., 0.)
     M0=ba.kvector_t(cos(self.xi*deg), sin(self.xi*deg), 0.)
-    m_mag_000=ba.HomogeneousMagneticMaterial("Spin", 0., 0., M0*MagE)
+    m_mag_000=ba.HomogeneousMagneticMaterial("Spin", self.surface_fraction*self.get_n('Py').real,
+                                         -self.surface_fraction*self.get_n('Py').imag,
+                                         self.surface_fraction*B_ext*self.get_n('MagB')+M0*MagE)
     m_mag_180=m_mag_000
     m_mag_030=m_mag_000
     m_mag_240=m_mag_000
@@ -333,8 +336,11 @@ class HCSample(MLBuilder):
     basis1=ba.ParticleComposition()
     basis2=ba.ParticleComposition()
 
+    B_ext=ba.kvector_t(0., 1., 0.)
     M0=ba.kvector_t(cos(self.xi*deg), sin(self.xi*deg), 0.)
-    m_mag_000=ba.HomogeneousMagneticMaterial("Spin", 0., 0., M0*MagE)
+    m_mag_000=ba.HomogeneousMagneticMaterial("Spin", self.surface_fraction*self.get_n('Py').real,
+                                         -self.surface_fraction*self.get_n('Py').imag,
+                                         self.surface_fraction*B_ext*self.get_n('MagB')+M0*MagE)
     m_mag_180=m_mag_000
     m_mag_030=m_mag_000
     m_mag_240=m_mag_000
@@ -400,8 +406,11 @@ class HCSample(MLBuilder):
     basis1=ba.ParticleComposition() # right handed
     basis2=ba.ParticleComposition() # left handed
 
+    B_ext=ba.kvector_t(0., 1., 0.)
     M0=ba.kvector_t(cos(self.xi*deg), sin(self.xi*deg), 0.)
-    m_mag_000=ba.HomogeneousMagneticMaterial("Spin", 0., 0., M0*MagE)
+    m_mag_000=ba.HomogeneousMagneticMaterial("Spin", self.surface_fraction*self.get_n('Py').real,
+                                         -self.surface_fraction*self.get_n('Py').imag,
+                                         self.surface_fraction*B_ext*self.get_n('MagB')+M0*MagE)
     m_mag_180=m_mag_000
     m_mag_030=m_mag_000
     m_mag_240=m_mag_000
